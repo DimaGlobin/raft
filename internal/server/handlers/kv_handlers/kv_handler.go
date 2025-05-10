@@ -30,7 +30,7 @@ type kvPayload struct {
 }
 
 func (k *KvHandler) redirectToReplica(w http.ResponseWriter, r *http.Request) bool {
-	if k.srv.Raft().IsLeader() && (r.Method == http.MethodGet) {
+	if k.srv.Raft().IsLeader() && (r.Method == http.MethodGet) && len(k.srv.GetReplicas()) != 0 {
 		// pick random other
 		replicas := k.srv.GetReplicas()
 		reps := make([]string, 0, len(replicas)-1)
@@ -40,7 +40,7 @@ func (k *KvHandler) redirectToReplica(w http.ResponseWriter, r *http.Request) bo
 			}
 		}
 		tgt := reps[rand.Intn(len(reps))]
-		w.Header().Set("Location", tgt+"/kv/"+chi.URLParam(r, "id"))
+		w.Header().Set("Location", tgt+"/kv/"+chi.URLParam(r, "key"))
 		w.WriteHeader(http.StatusFound)
 		return true
 	}
@@ -73,8 +73,8 @@ func (k *KvHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
-	v, err := k.srv.Get(id)
+	key := chi.URLParam(r, "key")
+	v, err := k.srv.Get(key)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return

@@ -17,9 +17,9 @@ const (
 )
 
 type Command struct {
-	Op    string `json:"op"`
-	Id    string `json:"id"`
-	Value []byte `json:"value,omitempty"`
+	Op    CmdType `json:"op"`
+	Id    string  `json:"id"`
+	Value string  `json:"value,omitempty"`
 }
 
 func (c CmdType) Valid() error {
@@ -40,11 +40,8 @@ func NewFSM(store repository.Repository) *FSM {
 }
 
 func (f *FSM) Apply(logData []byte) interface{} {
-	var cmd struct {
-		Op    CmdType `json:"op"`
-		ID    string  `json:"id"`
-		Value string  `json:"value,omitempty"`
-	}
+
+	var cmd Command
 	if err := json.Unmarshal(logData, &cmd); err != nil {
 		return err
 	}
@@ -53,14 +50,16 @@ func (f *FSM) Apply(logData []byte) interface{} {
 		return err
 	}
 
+	fmt.Println("APPLY:", cmd.Op, cmd.Id, cmd.Value)
+
 	switch cmd.Op {
-	case "create":
-		return f.store.Create(cmd.ID, cmd.Value)
-	case "update":
-		return f.store.Update(cmd.ID, cmd.Value)
-	case "delete":
-		return f.store.Delete(cmd.ID)
+	case Create:
+		return f.store.Create(cmd.Id, cmd.Value)
+	case Update:
+		return f.store.Update(cmd.Id, cmd.Value)
+	case Delete:
+		return f.store.Delete(cmd.Id)
 	default:
-		return nil
+		return fmt.Errorf("unsupported op: %s", cmd.Op)
 	}
 }

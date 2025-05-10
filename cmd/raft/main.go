@@ -8,14 +8,17 @@ import (
 	"github.com/DimaGlobin/raft/internal/server"
 	"github.com/DimaGlobin/raft/internal/server/router"
 	"github.com/DimaGlobin/raft/internal/service"
+	"github.com/DimaGlobin/raft/pkg/raft"
 	"golang.org/x/exp/slog"
 )
 
 func main() {
 	// cfg := config.Load()
 	cfg := config.Config{
-		IsLeader: true,
+		Id:       "node1",
 		Port:     "8080",
+		Self:     "http://localhost:8080",
+		IsLeader: true,
 	}
 
 	log := slog.New(
@@ -23,7 +26,11 @@ func main() {
 	)
 
 	repository := repository.New()
-	service := service.New(cfg, repository)
+	fsm := raft.NewFSM(repository)
+	raftNode := raft.NewNode(cfg.Id, fsm)
+	raftNode.Start()
+
+	service := service.NewKvService(cfg, repository, raftNode)
 	router := router.NewRouter(log, service, cfg.Self)
 
 	srv := server.NewServer(cfg, router)

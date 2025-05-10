@@ -9,5 +9,5 @@ type Service interface {
 	Patch(key, value string) error
 	Create(key, value string) error
 	GetReplicas() []string
-	Raft() *raft.Node
+	Raft() raft.RaftNodeInterface
 }

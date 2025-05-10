@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -19,6 +20,8 @@ func New() Repository {
 }
 
 func (k *KvRepository) Create(key, value string) error {
+	fmt.Println("CREATE:", key, value)
+
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
