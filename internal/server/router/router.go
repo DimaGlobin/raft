@@ -5,6 +5,7 @@ import (
 
 	"github.com/DimaGlobin/raft/internal/middleware/logger"
 	"github.com/DimaGlobin/raft/internal/server/handlers/kv_handlers"
+	"github.com/DimaGlobin/raft/internal/server/handlers/raft_handlers"
 	"github.com/DimaGlobin/raft/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,6 +27,7 @@ func NewRouter(log *slog.Logger, service service.Service, self string) chi.Route
 	})
 
 	kvHandler := kv_handlers.NewKvHandler(service, log, self)
+	raftHandler := raft_handlers.NewRaftHandler(service, log)
 
 	router.Route("/kv", func(r chi.Router) {
 		r.Delete("/{key}", kvHandler.Delete)
@@ -33,6 +35,12 @@ func NewRouter(log *slog.Logger, service service.Service, self string) chi.Route
 		r.Post("/", kvHandler.Create)
 		r.Put("/{key}", kvHandler.Update)
 		r.Patch("/{key}", kvHandler.Patch)
+		r.Post("/{key}", kvHandler.CompareAndSwap)
+	})
+
+	router.Route("/raft", func(r chi.Router) {
+		r.Post("/append", raftHandler.Append)
+		r.Post("/vote", raftHandler.Vote)
 	})
 
 	return router

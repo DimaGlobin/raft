@@ -10,4 +10,5 @@ type Service interface {
 	Create(key, value string) error
 	GetReplicas() []string
 	Raft() raft.RaftNodeInterface
+	CAS(key, expected, newVal string) error
 }

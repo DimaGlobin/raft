@@ -15,10 +15,13 @@ import (
 func main() {
 	// cfg := config.Load()
 	cfg := config.Config{
-		Id:       "node1",
-		Port:     "8080",
-		Self:     "http://localhost:8080",
-		IsLeader: true,
+		Id:   "node1",
+		Port: "8080",
+		Self: "http://localhost:8080",
+		Peers: map[string]string{
+			"a": "b",
+			"c": "d",
+		},
 	}
 
 	log := slog.New(
@@ -26,8 +29,15 @@ func main() {
 	)
 
 	repository := repository.New()
-	fsm := raft.NewFSM(repository)
-	raftNode := raft.NewNode(cfg.Id, fsm)
+
+	raftCfg := raft.NodeConfig{
+		ID:     cfg.Id,
+		Peers:  cfg.Peers,
+		Logger: log,
+	}
+
+	fsm := raft.NewFSM(repository, log)
+	raftNode := raft.NewNode(fsm, raftCfg)
 	raftNode.Start()
 
 	service := service.NewKvService(cfg, repository, raftNode)

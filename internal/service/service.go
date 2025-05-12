@@ -3,6 +3,8 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/DimaGlobin/raft/internal/model/config"
 	"github.com/DimaGlobin/raft/internal/repository"
@@ -20,10 +22,8 @@ type KvService struct {
 
 func NewKvService(cfg config.Config, repo repository.Repository, raft raft.RaftNodeInterface) Service {
 	return &KvService{
-		repo:     repo,
-		isLeader: cfg.IsLeader,
-		// replicas: cfg.Replicas,
-		raft:     raft,
+		repo: repo,
+		raft: raft,
 	}
 }
 
@@ -32,7 +32,16 @@ func (s *KvService) applyOp(cmd raft.Command) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.Raft().Apply(data)
+	index, err := s.Raft().Apply(data)
+	if err != nil {
+		return err
+	}
+
+	err = s.raft.WaitForCommit(index, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("command not committed: %w", err)
+	}
+
 	return err
 }
 
@@ -80,4 +89,14 @@ func (s *KvService) GetReplicas() []string {
 
 func (s *KvService) Raft() raft.RaftNodeInterface {
 	return s.raft
+}
+
+func (s *KvService) CAS(key, expected, newVal string) error {
+	cmd := raft.Command{
+		Op:       raft.CAS,
+		Id:       key,
+		Value:    newVal,
+		Expected: expected,
+	}
+	return s.applyOp(cmd)
 }

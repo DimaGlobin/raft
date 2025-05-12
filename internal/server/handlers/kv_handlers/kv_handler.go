@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
+	"strings"
 
 	"github.com/DimaGlobin/raft/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -136,4 +137,39 @@ func (h *KvHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (k *KvHandler) CompareAndSwap(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+
+	// Читаем новое значение из тела запроса
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	expected := r.Header.Get("If-Match")
+
+	if r.Header.Get("If-None-Match") == "*" {
+		expected = ""
+	}
+
+	err := k.srv.CAS(key, expected, body.Value)
+	if err != nil {
+		if strings.Contains(err.Error(), "cas conflict") {
+			http.Error(w, "cas conflict", http.StatusPreconditionFailed)
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "key not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

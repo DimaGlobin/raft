@@ -1,16 +1,32 @@
 package config
 
+import (
+	"os"
+	"strings"
+)
+
 type Config struct {
-	Id       string `json:"id" env:"ID"`
-	Port     string `json:"port" env:"PORT"`
-	Self     string `json:"self" env:"SELF"` // http://localhost:8080
-	IsLeader bool   `json:"is_leader" env:"IS_LEADER"`
+	Id    string
+	Port  string
+	Self  string
+	Peers map[string]string
 }
 
-// func Load() Config {
-// 	return Config{
-// 		IsLeader: os.Getenv("IS_LEADER") == "true",
-// 		Port:     os.Getenv("PORT"),
-// 		Replicas: strings.Split(os.Getenv("SLAVES"), ","), //TODO: переделать
-// 	}
-// }
+func Load() Config {
+	peers := make(map[string]string)
+	if env := os.Getenv("PEERS"); env != "" {
+		for _, kv := range strings.Split(env, ",") {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) == 2 {
+				peers[parts[0]] = parts[1]
+			}
+		}
+	}
+
+	return Config{
+		Id:    os.Getenv("ID"),
+		Port:  os.Getenv("PORT"),
+		Self:  os.Getenv("SELF"),
+		Peers: peers,
+	}
+}
