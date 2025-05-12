@@ -13,16 +13,7 @@ import (
 )
 
 func main() {
-	// cfg := config.Load()
-	cfg := config.Config{
-		Id:   "node1",
-		Port: "8080",
-		Self: "http://localhost:8080",
-		Peers: map[string]string{
-			"a": "b",
-			"c": "d",
-		},
-	}
+	cfg := config.Load()
 
 	log := slog.New(
 		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
@@ -40,7 +31,7 @@ func main() {
 	raftNode := raft.NewNode(fsm, raftCfg)
 	raftNode.Start()
 
-	service := service.NewKvService(cfg, repository, raftNode)
+	service := service.NewKvService(repository, raftNode, log)
 	router := router.NewRouter(log, service, cfg.Self)
 
 	srv := server.NewServer(cfg, router)

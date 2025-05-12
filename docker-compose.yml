@@ -1,0 +1,31 @@
+version: "3"
+services:
+  node1:
+    build: .
+    ports:
+      - "8081:8080"
+    environment:
+      - ID=node1
+      - PORT=8080
+      - SELF=http://node1:8080
+      - PEERS=node2=http://node2:8080,node3=http://node3:8080
+
+  node2:
+    build: .
+    ports:
+      - "8082:8080"
+    environment:
+      - ID=node2
+      - PORT=8080
+      - SELF=http://node2:8080
+      - PEERS=node1=http://node1:8080,node3=http://node3:8080
+
+  node3:
+    build: .
+    ports:
+      - "8083:8080"
+    environment:
+      - ID=node3
+      - PORT=8080
+      - SELF=http://node3:8080
+      - PEERS=node1=http://node1:8080,node2=http://node2:8080

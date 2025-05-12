@@ -22,6 +22,8 @@ func NewRaftHandler(srv service.Service, log *slog.Logger) *RaftHandler {
 }
 
 func (rh *RaftHandler) Append(w http.ResponseWriter, r *http.Request) {
+	rh.log.Debug("RaftHandler.Append called")
+
 	var req raft.AppendEntriesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)

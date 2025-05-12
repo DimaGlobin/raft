@@ -64,7 +64,7 @@ func NewNode(fsm *FSM, cfg NodeConfig) *Node {
 
 	return &Node{
 		id:            cfg.ID,
-		state:         Leader,
+		state:         Follower,
 		fsm:           fsm,
 		log:           make([]LogEntry, 0),
 		applyCh:       make(chan ApplyResult, 100),
@@ -78,9 +78,13 @@ func NewNode(fsm *FSM, cfg NodeConfig) *Node {
 }
 
 func (n *Node) Start() {
+	n.logger.Debug("Node start initiated")
+
 	go n.runApplyLoop()
 	go n.runHeartbeatLoop()
 	go n.runElectionLoop()
+
+	n.logger.Debug("All background loops started")
 }
 
 func (n *Node) Apply(cmd []byte) (uint64, error) {
@@ -97,7 +101,8 @@ func (n *Node) Apply(cmd []byte) (uint64, error) {
 		Command: cmd,
 	}
 	n.log = append(n.log, entry)
-	n.commitIndex = entry.Index
+
+	// n.updateCommitIndex()
 
 	return entry.Index, nil
 }
@@ -112,7 +117,13 @@ func (n *Node) runApplyLoop() {
 				n.mu.Lock()
 				for n.lastApplied < n.commitIndex {
 					entry := n.log[n.lastApplied]
+
+					n.logger.Debug("runApplyLoop applying", "index", entry.Index)
+
 					result := n.fsm.Apply(entry.Command)
+
+					n.logger.Debug("runApplyLoop applied", "index", entry.Index, "result", result)
+
 					n.applyCh <- ApplyResult{
 						Index:   entry.Index,
 						Command: entry.Command,
@@ -132,22 +143,36 @@ func (n *Node) Stop() {
 }
 
 func (n *Node) IsLeader() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	return n.state == Leader
 }
 
 func (n *Node) runHeartbeatLoop() {
+	n.logger.Debug("runHeartbeatLoop sending to peers", "state", n.state)
+
 	go func() {
 		for {
 			select {
 			case <-n.stopCh:
 				return
 			default:
-				if n.state == Leader {
+				n.mu.Lock()
+				isLeader := n.state == Leader
+				state := n.state
+				n.mu.Unlock()
+
+				n.logger.Debug("Heartbeat tick", "state", state, "isLeader", isLeader)
+
+				if isLeader {
+					n.logger.Debug("Heartbeat tick - sending AppendEntries")
 					for peerID := range n.peers {
 						go n.sendAppendEntries(peerID)
 					}
+				} else {
+					n.logger.Debug("Heartbeat tick - not leader, skipping")
 				}
-				time.Sleep(200 * time.Millisecond)
+				time.Sleep(50 * time.Millisecond)
 			}
 		}
 	}()
@@ -168,6 +193,7 @@ func (n *Node) HandleAppendEntries(req AppendEntriesRequest) AppendEntriesRespon
 
 	if req.Term > n.currentTerm {
 		n.logger.Info("Updating term and stepping down to Follower", "fromTerm", n.currentTerm, "toTerm", req.Term)
+		n.logger.Warn("Got AppendEntries with higher term, stepping down", "currentTerm", n.currentTerm, "newTerm", req.Term)
 		n.currentTerm = req.Term
 		n.state = Follower
 		n.votedFor = ""
@@ -195,8 +221,9 @@ func (n *Node) HandleAppendEntries(req AppendEntriesRequest) AppendEntriesRespon
 		}
 	}
 
-	n.log = n.log[:req.PrevLogIndex]
-
+	if req.PrevLogIndex < uint64(len(n.log)) {
+		n.log = n.log[:req.PrevLogIndex]
+	}
 	n.log = append(n.log, req.Entries...)
 	n.logger.Info("Log updated", "newLength", len(n.log))
 
@@ -217,6 +244,8 @@ func (n *Node) HandleAppendEntries(req AppendEntriesRequest) AppendEntriesRespon
 }
 
 func (n *Node) sendAppendEntries(peerID string) {
+	n.logger.Debug("sendAppendEntries start", "peer", peerID)
+
 	n.mu.Lock()
 
 	addr, ok := n.peers[peerID]
@@ -249,13 +278,27 @@ func (n *Node) sendAppendEntries(peerID string) {
 
 	n.mu.Unlock()
 
-	data, _ := json.Marshal(req)
+	n.logger.Debug("Sending AppendEntries",
+		"peer", peerID,
+		"entries", len(entries),
+		"nextIndex", nextIdx,
+		"logLen", len(n.log))
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		n.logger.Error("failed to marshal AppendEntries request", "peer", peerID, "error", err)
+		return
+	}
+
+	n.logger.Debug("sending HTTP request", "peer", peerID, "url", addr+"/raft/append")
 	resp, err := http.Post(addr+"/raft/append", "application/json", bytes.NewReader(data))
 	if err != nil {
 		n.logger.Warn("AppendEntries failed", "peer", peerID, "error", err)
 		return
 	}
 	defer resp.Body.Close()
+
+	n.logger.Debug("AppendEntries sent", "peer", peerID, "status", resp.StatusCode)
 
 	var res AppendEntriesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
@@ -375,6 +418,8 @@ func (n *Node) runElectionLoop() {
 }
 
 func (n *Node) startElection() {
+	n.logger.Debug("startElection triggered", "term", n.currentTerm+1)
+
 	n.mu.Lock()
 	n.currentTerm++
 	n.state = Candidate
@@ -423,12 +468,11 @@ func (n *Node) startElection() {
 }
 
 func randomElectionTimeout() time.Duration {
-	return time.Duration(150+rand.Intn(150)) * time.Millisecond
+	return time.Duration(500+rand.Intn(500)) * time.Millisecond
 }
 
 func (n *Node) updateCommitIndex() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	n.logger.Debug("updateCommitIndex called", "matchIndex", n.matchIndex, "ownIndex", len(n.log))
 
 	matchIndexes := make([]uint64, 0, len(n.matchIndex)+1)
 
@@ -458,7 +502,6 @@ func (n *Node) updateCommitIndex() {
 	}
 }
 
-
 func (n *Node) WaitForCommit(index uint64, timeout time.Duration) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -482,10 +525,14 @@ func (n *Node) WaitForCommit(index uint64, timeout time.Duration) error {
 }
 
 func (n *Node) ApplyWithResult(data []byte, timeout time.Duration) (any, error) {
+	n.logger.Debug("ApplyWithResult called")
+
 	index, err := n.Apply(data)
 	if err != nil {
 		return nil, err
 	}
+
+	n.logger.Debug("waiting for apply result", "index", index)
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -495,6 +542,7 @@ func (n *Node) ApplyWithResult(data []byte, timeout time.Duration) (any, error) 
 		case <-timer.C:
 			return nil, fmt.Errorf("timeout waiting for apply result, index=%d", index)
 		case res := <-n.applyCh:
+			n.logger.Debug("applyCh received", "index", res.Index, "expectedIndex", index)
 			if res.Index == index {
 				return res.Result, nil
 			}

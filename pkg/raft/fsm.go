@@ -47,12 +47,13 @@ func NewFSM(store repository.Repository, logger *slog.Logger) *FSM {
 }
 
 func (f *FSM) Apply(logData []byte) interface{} {
-
 	var cmd Command
 	if err := json.Unmarshal(logData, &cmd); err != nil {
 		f.logger.Error("Failed to unmarshal command", "error", err)
 		return err
 	}
+
+	f.logger.Debug("FSM Apply called", "op", cmd.Op, "key", cmd.Id, "val", cmd.Value)
 
 	if err := cmd.Op.Valid(); err != nil {
 		f.logger.Warn("Invalid command operation", "op", cmd.Op)

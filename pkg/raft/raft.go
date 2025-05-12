@@ -8,5 +8,5 @@ type RaftNodeInterface interface {
 	IsLeader() bool
 	HandleAppendEntries(req AppendEntriesRequest) AppendEntriesResponse
 	HandleRequestVote(req RequestVoteRequest) RequestVoteResponse
-	WaitForCommit(index uint64, timeout time.Duration) error
+	ApplyWithResult(data []byte, timeout time.Duration) (any, error)
 }

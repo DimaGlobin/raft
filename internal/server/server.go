@@ -15,7 +15,7 @@ type Server struct {
 func NewServer(cfg config.Config, router chi.Router) *Server {
 	return &Server{
 		httpServer: http.Server{
-			Addr:    "localhost:" + cfg.Port,
+			Addr:    ":" + cfg.Port,
 			Handler: router,
 		},
 	}

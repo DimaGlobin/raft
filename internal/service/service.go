@@ -3,12 +3,11 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/DimaGlobin/raft/internal/model/config"
 	"github.com/DimaGlobin/raft/internal/repository"
 	"github.com/DimaGlobin/raft/pkg/raft"
+	"golang.org/x/exp/slog"
 )
 
 var _ Service = (*KvService)(nil)
@@ -18,28 +17,36 @@ type KvService struct {
 	isLeader bool
 	replicas []string
 	raft     raft.RaftNodeInterface
+	logger   *slog.Logger
 }
 
-func NewKvService(cfg config.Config, repo repository.Repository, raft raft.RaftNodeInterface) Service {
+func NewKvService(repo repository.Repository, raft raft.RaftNodeInterface, log *slog.Logger) Service {
 	return &KvService{
-		repo: repo,
-		raft: raft,
+		repo:   repo,
+		raft:   raft,
+		logger: log,
 	}
 }
 
 func (s *KvService) applyOp(cmd raft.Command) error {
+	s.logger.Debug("applyOp called", "cmd", cmd)
+
 	data, err := json.Marshal(cmd)
 	if err != nil {
 		return err
 	}
-	index, err := s.Raft().Apply(data)
+
+	s.logger.Debug("calling ApplyWithResult")
+	result, err := s.raft.ApplyWithResult(data, 2*time.Second)
 	if err != nil {
+		s.logger.Error("ApplyWithResult failed", "error", err)
 		return err
 	}
 
-	err = s.raft.WaitForCommit(index, 2*time.Second)
-	if err != nil {
-		return fmt.Errorf("command not committed: %w", err)
+	s.logger.Debug("apply result received", "result", result)
+
+	if err, ok := result.(error); ok {
+		return err
 	}
 
 	return err
